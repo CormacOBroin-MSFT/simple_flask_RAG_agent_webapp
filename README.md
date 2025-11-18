@@ -1,5 +1,23 @@
 # AI Chatbot Integration Guide
 
+## ⚠️ Security Notice - Development Only
+
+**This application is NOT production-ready and contains security vulnerabilities:**
+
+- **Hardcoded Flask Secret Key**: The session secret key is hardcoded in `app.py` as `'your-secret-key-here'`, which is insecure. This means:
+  - Session data can be easily forged or tampered with
+  - All deployments share the same key, compromising security across instances
+  - Sessions persist across server restarts, which could be exploited
+
+**For production deployment, you MUST:**
+1. Generate a secure random secret key: `python -c "import secrets; print(secrets.token_hex(32))"`
+2. Set it as an environment variable: `export FLASK_SECRET_KEY="your-generated-key"`
+3. Update `app.py` to use: `app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback-dev-key')`
+
+**This application is intended for local development and testing purposes only.**
+
+---
+
 ## ☁️ Deploying Your Agent in Azure AI Foundry
 
 To use this chatbot, you must deploy an agent (assistant) in Azure AI Foundry:

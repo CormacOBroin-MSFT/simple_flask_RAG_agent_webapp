@@ -37,276 +37,287 @@ config = {
     'use_agent': os.environ.get('USE_AZURE_AGENT', 'true').lower() == 'true'
 }
 
-# Global dictionary to track conversation threads per session
-conversation_threads = {}
 
+class AzureAIClient:
+    """Encapsulates Azure AI Foundry client logic and state management"""
 
-def get_azure_access_token():
-    """Get Azure access token for AI Foundry"""
-    global current_access_token, azure_credential
+    def __init__(self, endpoint, project_name, api_version, agent_id):
+        self.endpoint = endpoint
+        self.project_name = project_name
+        self.api_version = api_version
+        self.agent_id = agent_id
+        self.credential = None
+        self.access_token = None
+        self.conversation_threads = {}
 
-    try:
-        # Initialize credential if needed
-        if not azure_credential:
-            azure_credential = AzureCliCredential()
+    def get_access_token(self):
+        """Get Azure access token for AI Foundry"""
+        try:
+            # Initialize credential if needed
+            if not self.credential:
+                self.credential = AzureCliCredential()
 
-        # Get token with correct scope for Azure AI Foundry
-        token = azure_credential.get_token("https://ai.azure.com/.default")
-        current_access_token = token.token
+            # Get token with correct scope for Azure AI Foundry
+            token = self.credential.get_token("https://ai.azure.com/.default")
+            self.access_token = token.token
 
-        print(f"✅ Got Azure access token: {current_access_token[:20]}...")
-        return current_access_token
+            print(f"✅ Got Azure access token: {self.access_token[:20]}...")
+            return self.access_token
 
-    except Exception as e:
-        print(f"❌ Failed to get Azure access token: {e}")
-        return None
-
-
-def initialize_azure_client():
-    """Initialize Azure AI Foundry with OpenAI compatible API"""
-    global azure_credential
-
-    # Skip initialization if Azure AI is not properly configured
-    if not AZURE_AI_CONFIGURED:
-        print("⚠️  Azure AI Foundry not configured - using placeholder values")
-        print("   💡 Set environment variables to enable Azure AI integration")
-        return False
-
-    try:
-        print(f"🔧 Initializing Azure AI Foundry OpenAI API...")
-        print(f"   📡 Endpoint: {AZURE_AI_ENDPOINT}")
-        print(f"   🤖 Agent ID: {AZURE_AI_AGENT_ID}")
-        print(f"   📋 Project: {AZURE_AI_PROJECT_NAME}")
-        print(f"   � API Version: {AZURE_AI_API_VERSION}")
-
-        # Initialize credential
-        azure_credential = AzureCliCredential()
-
-        # Test authentication
-        token = get_azure_access_token()
-        if not token:
-            print("❌ Could not get access token")
-            return False
-
-        # Test if we can list agents using native API
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
-        # Endpoint already includes the project path, just append /assistants
-        agents_url = f"{AZURE_AI_ENDPOINT}/assistants"
-        params = {"api-version": AZURE_AI_API_VERSION}
-
-        response = requests.get(agents_url, headers=headers, params=params)
-
-        if response.status_code == 200:
-            agents_data = response.json()
-            print(f"   ✅ Found {len(agents_data.get('data', []))} agents")
-
-            # Check if our target agent exists
-            for agent in agents_data.get('data', []):
-                if agent['id'] == AZURE_AI_AGENT_ID:
-                    print(
-                        f"   🎯 Target agent found: {agent.get('name', 'Unknown')}")
-                    return True
-
-            print(
-                f"   ⚠️  Target agent {AZURE_AI_AGENT_ID} not found, but API works")
-            return True
-        else:
-            print(
-                f"   ❌ API test failed: {response.status_code} - {response.text}")
-            return False
-
-    except Exception as e:
-        print(f"❌ Failed to initialize Azure AI Foundry: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-
-def get_or_create_thread(session_id):
-    """Get existing thread or create a new one for the session"""
-    global conversation_threads
-
-    try:
-        # Check if we have a thread for this session
-        if session_id in conversation_threads:
-            return conversation_threads[session_id]
-
-        # Get current token
-        token = get_azure_access_token()
-        if not token:
+        except Exception as e:
+            print(f"❌ Failed to get Azure access token: {e}")
             return None
 
-        # Create new thread using native Azure AI Foundry API
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
-        # Endpoint already includes the project path, just append /threads
-        threads_url = f"{AZURE_AI_ENDPOINT}/threads"
-        params = {"api-version": AZURE_AI_API_VERSION}
-
-        response = requests.post(
-            threads_url, headers=headers, params=params, json={})
-
-        if response.status_code == 200:
-            thread_data = response.json()
-            thread_id = thread_data['id']
-            conversation_threads[session_id] = thread_id
-            print(f"✅ Created new thread: {thread_id}")
-            return thread_id
-        else:
-            print(
-                f"❌ Failed to create thread: {response.status_code} - {response.text}")
-            return None
-
-    except Exception as e:
-        print(f"❌ Error managing thread: {e}")
-        return None
-
-
-def send_message_to_agent(message, thread_id):
-    """Send message to Azure AI Foundry agent using OpenAI compatible API"""
-    try:
-        print(f"📤 Sending message to agent {AZURE_AI_AGENT_ID}")
-
-        # Get current token
-        token = get_azure_access_token()
+    def _get_headers(self):
+        """Get request headers with current token"""
+        token = self.get_access_token()
         if not token:
-            return "Failed to get authentication token."
-
-        headers = {
+            return None
+        return {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
-        params = {"api-version": AZURE_AI_API_VERSION}
 
-        # 1. Add message to thread using native API
-        # Endpoint already includes the project path
-        messages_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/messages"
-        message_data = {
-            "role": "user",
-            "content": message
-        }
+    def _get_params(self):
+        """Get common API parameters"""
+        return {"api-version": self.api_version}
 
-        response = requests.post(
-            messages_url, headers=headers, params=params, json=message_data)
+    def initialize(self):
+        """Initialize and test Azure AI Foundry connection"""
+        try:
+            print(f"🔧 Initializing Azure AI Foundry OpenAI API...")
+            print(f"   📡 Endpoint: {self.endpoint}")
+            print(f"   🤖 Agent ID: {self.agent_id}")
+            print(f"   📋 Project: {self.project_name}")
+            print(f"   🔢 API Version: {self.api_version}")
 
-        if response.status_code != 200:
-            print(
-                f"❌ Failed to add message: {response.status_code} - {response.text}")
-            return "Failed to send message."
+            # Initialize credential
+            self.credential = AzureCliCredential()
 
-        message_obj = response.json()
-        print(f"✅ Message created: {message_obj['id']}")
+            # Test authentication
+            headers = self._get_headers()
+            if not headers:
+                print("❌ Could not get access token")
+                return False
 
-        # 2. Create and run using native API
-        # Endpoint already includes the project path
-        runs_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/runs"
-        run_data = {
-            "assistant_id": AZURE_AI_AGENT_ID,
-            # "instructions": "You are a helpful assistant. Please provide clear and concise answers."
-        }
+            # Test if we can list agents using native API
+            agents_url = f"{self.endpoint}/assistants"
 
-        response = requests.post(
-            runs_url, headers=headers, params=params, json=run_data)
-
-        if response.status_code != 200:
-            print(
-                f"❌ Failed to create run: {response.status_code} - {response.text}")
-            return "Failed to process request."
-
-        run_obj = response.json()
-        run_id = run_obj['id']
-        print(f"✅ Run created: {run_id}")
-
-        # 3. Wait for completion
-        max_wait = 30  # 30 seconds max
-        wait_time = 0
-
-        while wait_time < max_wait:
-            time.sleep(1)
-            wait_time += 1
-
-            # Check run status using native API
-            # Endpoint already includes the project path
-            run_status_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/runs/{run_id}"
             response = requests.get(
-                run_status_url, headers=headers, params=params)
+                agents_url, headers=headers, params=self._get_params())
 
             if response.status_code == 200:
-                run_status = response.json()
-                status = run_status.get('status')
-                print(f"🔄 Run status: {status}")
+                agents_data = response.json()
+                print(f"   ✅ Found {len(agents_data.get('data', []))} agents")
 
-                if status == "completed":
-                    break
-                elif status in ["failed", "cancelled", "expired"]:
-                    print(f"❌ Run failed with status: {status}")
-                    return "Sorry, I encountered an error processing your request."
+                # Check if our target agent exists
+                for agent in agents_data.get('data', []):
+                    if agent['id'] == self.agent_id:
+                        print(
+                            f"   🎯 Target agent found: {agent.get('name', 'Unknown')}")
+                        return True
+
+                print(
+                    f"   ⚠️  Target agent {self.agent_id} not found, but API works")
+                return True
+            elif response.status_code == 401:
+                print(f"   ❌ Authentication failed - check your Azure credentials")
+                return False
+            elif response.status_code == 404:
+                print(f"   ❌ Endpoint not found - check your AZURE_AI_PROJECT_ENDPOINT")
+                return False
             else:
-                print(f"❌ Failed to check run status: {response.status_code}")
-                return "Failed to check processing status."
+                print(
+                    f"   ❌ API test failed: {response.status_code} - {response.text}")
+                return False
 
-        if wait_time >= max_wait:
-            print("⏰ Run timed out")
-            return "Request timed out. Please try again."
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ Connection error - unable to reach endpoint: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Failed to initialize Azure AI Foundry: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
-        # 4. Get messages using native API
-        # Endpoint already includes the project path
-        messages_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/messages"
-        response = requests.get(messages_url, headers=headers, params=params)
+    def get_or_create_thread(self, session_id):
+        """Get existing thread or create a new one for the session"""
+        try:
+            # Check if we have a thread for this session
+            if session_id in self.conversation_threads:
+                return self.conversation_threads[session_id]
 
-        if response.status_code != 200:
-            print(
-                f"❌ Failed to get messages: {response.status_code} - {response.text}")
-            return "Failed to retrieve response."
+            headers = self._get_headers()
+            if not headers:
+                print("❌ Could not get authentication headers for thread creation")
+                return None
 
-        messages_data = response.json()
-        messages = messages_data.get('data', [])
+            # Create new thread using native Azure AI Foundry API
+            threads_url = f"{self.endpoint}/threads"
 
-        # Find the latest assistant message
-        for message in messages:
-            if message.get('role') == 'assistant':
-                content = message.get('content', [])
-                if content and len(content) > 0:
-                    text_content = content[0]
-                    if text_content.get('type') == 'text':
-                        return text_content.get('text', {}).get('value', 'No response content')
+            response = requests.post(
+                threads_url, headers=headers, params=self._get_params(), json={})
 
-        return "I received your message but couldn't generate a proper response."
+            if response.status_code == 200:
+                thread_data = response.json()
+                thread_id = thread_data['id']
+                self.conversation_threads[session_id] = thread_id
+                print(f"✅ Created new thread: {thread_id}")
+                return thread_id
+            elif response.status_code == 401:
+                print(
+                    f"❌ Authentication failed when creating thread - token may have expired")
+                return None
+            else:
+                print(
+                    f"❌ Failed to create thread: {response.status_code} - {response.text}")
+                return None
 
-    except Exception as e:
-        print(f"❌ Error sending message to agent: {e}")
-        import traceback
-        traceback.print_exc()
-        return f"Sorry, I encountered an error: {str(e)}"
+        except requests.exceptions.Timeout:
+            print(f"❌ Request timed out while creating thread")
+            return None
+        except Exception as e:
+            print(f"❌ Error managing thread: {e}")
+            return None
+
+    def send_message(self, message, thread_id):
+        """Send message to Azure AI Foundry agent and get response"""
+        try:
+            print(f"📤 Sending message to agent {self.agent_id}")
+
+            headers = self._get_headers()
+            if not headers:
+                return "Failed to authenticate - please check your Azure credentials."
+
+            params = self._get_params()
+
+            # 1. Add message to thread
+            messages_url = f"{self.endpoint}/threads/{thread_id}/messages"
+            message_data = {"role": "user", "content": message}
+
+            response = requests.post(
+                messages_url, headers=headers, params=params, json=message_data)
+
+            if response.status_code != 200:
+                if response.status_code == 404:
+                    return "Thread not found - your session may have expired. Please refresh the page."
+                print(
+                    f"❌ Failed to add message: {response.status_code} - {response.text}")
+                return f"Failed to send message (HTTP {response.status_code})."
+
+            message_obj = response.json()
+            print(f"✅ Message created: {message_obj['id']}")
+
+            # 2. Create and run
+            runs_url = f"{self.endpoint}/threads/{thread_id}/runs"
+            run_data = {"assistant_id": self.agent_id}
+
+            response = requests.post(
+                runs_url, headers=headers, params=params, json=run_data)
+
+            if response.status_code != 200:
+                print(
+                    f"❌ Failed to create run: {response.status_code} - {response.text}")
+                return f"Failed to process request (HTTP {response.status_code})."
+
+            run_obj = response.json()
+            run_id = run_obj['id']
+            print(f"✅ Run created: {run_id}")
+
+            # 3. Wait for completion
+            max_wait = 30
+            wait_time = 0
+
+            while wait_time < max_wait:
+                time.sleep(1)
+                wait_time += 1
+
+                run_status_url = f"{self.endpoint}/threads/{thread_id}/runs/{run_id}"
+                response = requests.get(
+                    run_status_url, headers=headers, params=params)
+
+                if response.status_code == 200:
+                    run_status = response.json()
+                    status = run_status.get('status')
+                    print(f"🔄 Run status: {status}")
+
+                    if status == "completed":
+                        break
+                    elif status in ["failed", "cancelled", "expired"]:
+                        error_info = run_status.get('last_error', {})
+                        error_msg = error_info.get('message', 'Unknown error')
+                        print(
+                            f"❌ Run failed with status: {status}, error: {error_msg}")
+                        return f"Sorry, the request failed: {error_msg}"
+                else:
+                    print(
+                        f"❌ Failed to check run status: {response.status_code}")
+                    return "Failed to check processing status."
+
+            if wait_time >= max_wait:
+                print("⏰ Run timed out")
+                return "Request timed out. The agent is taking longer than expected. Please try again."
+
+            # 4. Get messages
+            messages_url = f"{self.endpoint}/threads/{thread_id}/messages"
+            response = requests.get(
+                messages_url, headers=headers, params=params)
+
+            if response.status_code != 200:
+                print(
+                    f"❌ Failed to get messages: {response.status_code} - {response.text}")
+                return "Failed to retrieve response."
+
+            messages_data = response.json()
+            messages = messages_data.get('data', [])
+
+            # Find the latest assistant message
+            for msg in messages:
+                if msg.get('role') == 'assistant':
+                    content = msg.get('content', [])
+                    if content and len(content) > 0:
+                        text_content = content[0]
+                        if text_content.get('type') == 'text':
+                            return text_content.get('text', {}).get('value', 'No response content')
+
+            return "I received your message but couldn't generate a proper response."
+
+        except requests.exceptions.Timeout:
+            print(f"❌ Request timed out")
+            return "The request timed out. Please try again."
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ Connection error: {e}")
+            return "Unable to connect to Azure AI service. Please check your network connection."
+        except Exception as e:
+            print(f"❌ Error sending message to agent: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"Sorry, I encountered an error: {str(e)}"
+
+    def get_response(self, user_input, session_id):
+        """Get response from Azure AI Foundry Agent"""
+        try:
+            if not self.credential:
+                return "Azure AI not initialized. Please check your configuration."
+
+            # Get or create thread for this session
+            thread_id = self.get_or_create_thread(session_id)
+            if not thread_id:
+                return "Failed to create conversation thread. Please try again."
+
+            # Send message to agent
+            response = self.send_message(user_input, thread_id)
+            return response
+
+        except Exception as e:
+            print(f"❌ Error with Azure AI Foundry Agent: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"Sorry, I encountered an error: {str(e)}"
 
 
-def get_azure_agent_response(user_input, session_id):
-    """Get response from Azure AI Foundry Agent using OpenAI compatible API"""
-    try:
-        if not azure_credential:
-            return "Azure AI not initialized. Please check your configuration."
-
-        # Get or create thread for this session
-        thread_id = get_or_create_thread(session_id)
-        if not thread_id:
-            return "Failed to create conversation thread."
-
-        # Send message to agent
-        response = send_message_to_agent(user_input, thread_id)
-        return response
-
-    except Exception as e:
-        print(f"❌ Error with Azure AI Foundry Agent: {e}")
-        import traceback
-        traceback.print_exc()
-        return f"Sorry, I encountered an error: {str(e)}"
+# Global Azure AI client instance
+azure_client = None
 
 
 def format_response_text(text):
@@ -339,7 +350,6 @@ def format_response_text(text):
     return formatted
 
 
-# Restore get_bot_response as a standalone function
 def get_bot_response(user_input):
     """Get chatbot response - only from Azure AI Foundry Agent, else return debug info"""
     user_input = user_input.strip()
@@ -351,8 +361,8 @@ def get_bot_response(user_input):
     session_id = session['session_id']
 
     # Only use Azure AI Foundry Agent
-    if config['use_agent'] and azure_credential:
-        azure_response = get_azure_agent_response(user_input, session_id)
+    if config['use_agent'] and azure_client:
+        azure_response = azure_client.get_response(user_input, session_id)
         if azure_response and not azure_response.startswith("Failed to create") and not azure_response.startswith("Sorry, I encountered"):
             return azure_response
 
@@ -361,8 +371,8 @@ def get_bot_response(user_input):
     if not config['use_agent']:
         debug_info.append(
             "[Debug] Azure AI agent usage is disabled (USE_AZURE_AGENT is false).")
-    if not azure_credential:
-        debug_info.append("[Debug] Azure credential is not initialized.")
+    if not azure_client:
+        debug_info.append("[Debug] Azure AI client is not initialized.")
     if not AZURE_AI_CONFIGURED:
         debug_info.append(
             "[Debug] Azure AI configuration is incomplete or using placeholder values.")
@@ -409,7 +419,7 @@ def chat():
 @app.route('/config')
 def get_config():
     """Get current bot configuration"""
-    azure_configured = bool(azure_credential)
+    azure_configured = bool(azure_client and azure_client.credential)
     agent_configured = bool(AZURE_AI_AGENT_ID and config['use_agent'])
 
     return jsonify({
@@ -429,7 +439,7 @@ def health():
     """Health check endpoint"""
     status = {
         'status': 'healthy',
-        'azure_ai_foundry_configured': azure_credential is not None,
+        'azure_ai_foundry_configured': azure_client is not None and azure_client.credential is not None,
         'agent_configured': AZURE_AI_AGENT_ID is not None,
         'agent_mode': config['use_agent']
     }
@@ -446,7 +456,18 @@ if __name__ == '__main__':
     print(f"🤖 Agent: {AZURE_AI_AGENT_ID}")
     print(f"🔢 API Version: {AZURE_AI_API_VERSION}")
 
-    azure_initialized = initialize_azure_client()
+    azure_initialized = False
+    if AZURE_AI_CONFIGURED:
+        azure_client = AzureAIClient(
+            endpoint=AZURE_AI_ENDPOINT,
+            project_name=AZURE_AI_PROJECT_NAME,
+            api_version=AZURE_AI_API_VERSION,
+            agent_id=AZURE_AI_AGENT_ID
+        )
+        azure_initialized = azure_client.initialize()
+    else:
+        print("⚠️  Azure AI Foundry not configured - using placeholder values")
+        print("   💡 Set environment variables to enable Azure AI integration")
 
     if azure_initialized:
         if config['use_agent']:
