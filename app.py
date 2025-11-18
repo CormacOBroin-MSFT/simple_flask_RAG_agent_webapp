@@ -94,7 +94,8 @@ def initialize_azure_client():
             "Content-Type": "application/json"
         }
 
-        agents_url = f"{AZURE_AI_ENDPOINT}/api/projects/{AZURE_AI_PROJECT_NAME}/assistants"
+        # Endpoint already includes the project path, just append /assistants
+        agents_url = f"{AZURE_AI_ENDPOINT}/assistants"
         params = {"api-version": AZURE_AI_API_VERSION}
 
         response = requests.get(agents_url, headers=headers, params=params)
@@ -145,7 +146,8 @@ def get_or_create_thread(session_id):
             "Content-Type": "application/json"
         }
 
-        threads_url = f"{AZURE_AI_ENDPOINT}/api/projects/{AZURE_AI_PROJECT_NAME}/threads"
+        # Endpoint already includes the project path, just append /threads
+        threads_url = f"{AZURE_AI_ENDPOINT}/threads"
         params = {"api-version": AZURE_AI_API_VERSION}
 
         response = requests.post(
@@ -184,7 +186,8 @@ def send_message_to_agent(message, thread_id):
         params = {"api-version": AZURE_AI_API_VERSION}
 
         # 1. Add message to thread using native API
-        messages_url = f"{AZURE_AI_ENDPOINT}/api/projects/{AZURE_AI_PROJECT_NAME}/threads/{thread_id}/messages"
+        # Endpoint already includes the project path
+        messages_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/messages"
         message_data = {
             "role": "user",
             "content": message
@@ -202,7 +205,8 @@ def send_message_to_agent(message, thread_id):
         print(f"✅ Message created: {message_obj['id']}")
 
         # 2. Create and run using native API
-        runs_url = f"{AZURE_AI_ENDPOINT}/api/projects/{AZURE_AI_PROJECT_NAME}/threads/{thread_id}/runs"
+        # Endpoint already includes the project path
+        runs_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/runs"
         run_data = {
             "assistant_id": AZURE_AI_AGENT_ID,
             # "instructions": "You are a helpful assistant. Please provide clear and concise answers."
@@ -229,7 +233,8 @@ def send_message_to_agent(message, thread_id):
             wait_time += 1
 
             # Check run status using native API
-            run_status_url = f"{AZURE_AI_ENDPOINT}/api/projects/{AZURE_AI_PROJECT_NAME}/threads/{thread_id}/runs/{run_id}"
+            # Endpoint already includes the project path
+            run_status_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/runs/{run_id}"
             response = requests.get(
                 run_status_url, headers=headers, params=params)
 
@@ -252,7 +257,8 @@ def send_message_to_agent(message, thread_id):
             return "Request timed out. Please try again."
 
         # 4. Get messages using native API
-        messages_url = f"{AZURE_AI_ENDPOINT}/api/projects/{AZURE_AI_PROJECT_NAME}/threads/{thread_id}/messages"
+        # Endpoint already includes the project path
+        messages_url = f"{AZURE_AI_ENDPOINT}/threads/{thread_id}/messages"
         response = requests.get(messages_url, headers=headers, params=params)
 
         if response.status_code != 200:
