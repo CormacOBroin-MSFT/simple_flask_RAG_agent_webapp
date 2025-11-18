@@ -42,7 +42,7 @@ For more details, see the Azure AI Foundry documentation on creating and configu
 ### 2. Clone and Install
 ```bash
 git clone <your-repo-url>
-cd localChatBot
+cd simple_flask_RAG_agent_webapp
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -50,18 +50,18 @@ pip install -r requirements.txt
 
 ### 3. Environment Variables
 Set the following environment variables (in your shell, `.env`, or `.bashrc`):
-- `AZURE_AI_ENDPOINT` (e.g. `https://your-endpoint.services.ai.azure.com`)
-- `AZURE_AI_PROJECT_NAME` (e.g. `your-project`)
-- `AZURE_AI_API_VERSION` (e.g. `2025-05-01`)
-- `AZURE_AI_AGENT_ID` (your assistant ID)
-- `USE_AZURE_AGENT` (set to `true` to enable agent)
-- `BOT_NAME` (optional, UI display name)
-- `GREETING_MESSAGE` (optional, UI greeting)
-- `FLASK_SECRET_KEY` (recommended, for session security)
+- `AZURE_AI_PROJECT_ENDPOINT` - Full project endpoint including path (e.g. `https://your-endpoint.services.ai.azure.com/api/projects/your-project`)
+- `AZURE_AI_PROJECT_NAME` - Your project name (e.g. `your-project`)
+- `AZURE_AI_API_VERSION` - API version to use (e.g. `2025-05-01`)
+- `AZURE_AI_AGENT_ID` - Your assistant ID (e.g. `asst_xxxxx`)
+- `USE_AZURE_AGENT` - Set to `true` to enable agent (default: `true`)
+- `BOT_NAME` - Optional, UI display name (default: `AI Assistant`)
+- `GREETING_MESSAGE` - Optional, UI greeting message
+- `FLASK_SECRET_KEY` - Recommended for session security
 
 Example for bash:
 ```bash
-export AZURE_AI_ENDPOINT="https://your-endpoint.services.ai.azure.com"
+export AZURE_AI_PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
 export AZURE_AI_PROJECT_NAME="your-project"
 export AZURE_AI_API_VERSION="2025-05-01"
 export AZURE_AI_AGENT_ID="asst_your_custom_id"
@@ -108,35 +108,31 @@ access_token = token.token
 
 ## 🌐 API Endpoints
 
-Azure AI Foundry has **two different API patterns** that show different agents:
+This application uses the **Azure AI Foundry Native API** pattern:
 
 ### Base Configuration
 ```
-Base URL: https://your-project.services.ai.azure.com
+Project Endpoint: https://your-endpoint.services.ai.azure.com/api/projects/your-project
+API Version: 2025-05-01
 Content-Type: application/json
 Authorization: Bearer <access_token>
 ```
 
+**Important:** The `AZURE_AI_PROJECT_ENDPOINT` already includes the full path `/api/projects/your-project`, so API calls simply append the resource path (e.g., `/assistants`, `/threads`).
+
 ### 📋 List All Agents
 
-**Option 1: OpenAI-Compatible Endpoint (Shows general agents)**
-- **Endpoint**: `/openai/assistants`
-- **API Version**: `2024-02-15-preview`
-- **Agents Found**: Various general-purpose assistants
+**Azure AI Foundry Native Endpoint:**
+- **Full URL**: `{AZURE_AI_PROJECT_ENDPOINT}/assistants`
+- **API Version**: `2025-05-01` (or your configured version)
+- **Agents Found**: Your custom-built assistants in this project
 
 ```bash
-curl -X GET "https://your-project.services.ai.azure.com/openai/assistants?api-version=2024-02-15-preview" \
-  -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
-  -H "Content-Type: application/json"
-```
+# Get your project endpoint
+PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
+API_VERSION="2025-05-01"
 
-**Option 2: Azure AI Foundry Native Endpoint (Shows your custom agent)**
-- **Endpoint**: `/api/projects/your-project/assistants`
-- **API Version**: `2025-05-01`
-- **Agents Found**: Your custom-built assistant
-
-```bash
-curl -X GET "https://your-project.services.ai.azure.com/api/projects/your-project/assistants?api-version=2025-05-01" \
+curl -X GET "${PROJECT_ENDPOINT}/assistants?api-version=${API_VERSION}" \
   -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
   -H "Content-Type: application/json"
 ```
@@ -163,7 +159,11 @@ curl -X GET "https://your-project.services.ai.azure.com/api/projects/your-projec
 ### 🤖 Get Specific Agent (Your Custom Agent)
 
 ```bash
-curl -X GET "https://your-project.services.ai.azure.com/api/projects/your-project/assistants/asst_your_custom_id?api-version=2025-05-01" \
+PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
+API_VERSION="2025-05-01"
+AGENT_ID="asst_your_custom_id"
+
+curl -X GET "${PROJECT_ENDPOINT}/assistants/${AGENT_ID}?api-version=${API_VERSION}" \
   -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
   -H "Content-Type: application/json"
 ```
@@ -171,10 +171,12 @@ curl -X GET "https://your-project.services.ai.azure.com/api/projects/your-projec
 ### 💬 Create Thread
 
 ```bash
-curl -X POST "https://your-project.services.ai.azure.com/openai/threads?api-version=2024-02-15-preview" \
-  -H "Authorization: Bearer <access_token>" \
+PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
+API_VERSION="2025-05-01"
+
+curl -X POST "${PROJECT_ENDPOINT}/threads?api-version=${API_VERSION}" \
+  -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
   -H "Content-Type: application/json" \
-  -H "OpenAI-Beta: assistants=v2" \
   -d '{}'
 ```
 
@@ -191,10 +193,13 @@ curl -X POST "https://your-project.services.ai.azure.com/openai/threads?api-vers
 ### 📝 Add Message to Thread
 
 ```bash
-curl -X POST "https://your-project.services.ai.azure.com/openai/threads/{thread_id}/messages?api-version=2024-02-15-preview" \
-  -H "Authorization: Bearer <access_token>" \
+PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
+API_VERSION="2025-05-01"
+THREAD_ID="thread_xxxxx"
+
+curl -X POST "${PROJECT_ENDPOINT}/threads/${THREAD_ID}/messages?api-version=${API_VERSION}" \
+  -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
   -H "Content-Type: application/json" \
-  -H "OpenAI-Beta: assistants=v2" \
   -d '{
     "role": "user",
     "content": "Hello! How can you help me?"
@@ -223,13 +228,16 @@ curl -X POST "https://your-project.services.ai.azure.com/openai/threads/{thread_
 ### 🏃 Create and Run
 
 ```bash
-curl -X POST "https://your-project.services.ai.azure.com/openai/threads/{thread_id}/runs?api-version=2024-02-15-preview" \
-  -H "Authorization: Bearer <access_token>" \
+PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
+API_VERSION="2025-05-01"
+THREAD_ID="thread_xxxxx"
+AGENT_ID="asst_your_custom_id"
+
+curl -X POST "${PROJECT_ENDPOINT}/threads/${THREAD_ID}/runs?api-version=${API_VERSION}" \
+  -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
   -H "Content-Type: application/json" \
-  -H "OpenAI-Beta: assistants=v2" \
   -d '{
-    "assistant_id": "asst_your_custom_id",
-    "instructions": "You are a helpful assistant. Please provide clear and concise answers."
+    "assistant_id": "'${AGENT_ID}'"
   }'
 ```
 
@@ -247,8 +255,13 @@ curl -X POST "https://your-project.services.ai.azure.com/openai/threads/{thread_
 ### 📊 Check Run Status
 
 ```bash
-curl -X GET "https://your-project.services.ai.azure.com/openai/threads/{thread_id}/runs/{run_id}?api-version=2024-02-15-preview" \
-  -H "Authorization: Bearer <access_token>" \
+PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
+API_VERSION="2025-05-01"
+THREAD_ID="thread_xxxxx"
+RUN_ID="run_xxxxx"
+
+curl -X GET "${PROJECT_ENDPOINT}/threads/${THREAD_ID}/runs/${RUN_ID}?api-version=${API_VERSION}" \
+  -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
   -H "Content-Type: application/json"
 ```
 
@@ -263,8 +276,12 @@ curl -X GET "https://your-project.services.ai.azure.com/openai/threads/{thread_i
 ### 📨 Get Messages from Thread
 
 ```bash
-curl -X GET "https://your-project.services.ai.azure.com/openai/threads/{thread_id}/messages?api-version=2024-02-15-preview" \
-  -H "Authorization: Bearer <access_token>" \
+PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
+API_VERSION="2025-05-01"
+THREAD_ID="thread_xxxxx"
+
+curl -X GET "${PROJECT_ENDPOINT}/threads/${THREAD_ID}/messages?api-version=${API_VERSION}" \
+  -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
   -H "Content-Type: application/json"
 ```
 
@@ -294,83 +311,85 @@ curl -X GET "https://your-project.services.ai.azure.com/openai/threads/{thread_i
 ## ⚠️ Common Issues & Solutions
 
 ### 401 Unauthorized
-- **Problem**: Wrong authentication scope or method
-- **Solution**: Use `https://ai.azure.com/.default` scope with Bearer token
+- **Problem**: Wrong authentication scope or expired token
+- **Solution**: Use `https://ai.azure.com/.default` scope with Bearer token. Ensure you're logged in with `az login`
 
-### 400 Bad Request - API Version Not Supported
-- **Problem**: Using wrong API version
-- **Solution**: Use `2024-02-15-preview`
+### 404 Not Found - Resource not found
+- **Problem**: Incorrect endpoint URL - likely duplicating the project path
+- **Solution**: Ensure `AZURE_AI_PROJECT_ENDPOINT` already includes `/api/projects/your-project`. Don't append it again.
+- **Example**: Use `${ENDPOINT}/assistants` NOT `${ENDPOINT}/api/projects/your-project/assistants`
 
-### 404 Not Found
-- **Problem**: Using wrong endpoint pattern
-- **Solution**: Use `/openai/assistants` not `/api/projects/.../assistants`
+### 404 Not Found - Agent Not Found
+- **Problem**: Using non-existent agent ID or wrong project
+- **Solution**: List agents first to get valid IDs for your specific project
 
-### Agent Not Found
-- **Problem**: Using non-existent agent ID
-- **Solution**: List agents first to get valid IDs
+### Thread/Session Expired
+- **Problem**: Thread ID no longer valid
+- **Solution**: Create a new thread. The app handles this automatically per user session.
 
 ## 📚 Available Agents
 
-Based on testing, these agents are available:
+Agents available depend on your Azure AI Foundry project. List them using:
 
-**Your Custom Agent (Native API):**
-1. **Custom AI Assistant** (`asst_your_custom_id`)
-   - Specialized assistance for your domain
-   - Model: gpt-4.1-mini
-   - Provides guidance based on provided data only
-   - Access via: `/api/projects/.../assistants` with API version `2025-05-01`
+```bash
+PROJECT_ENDPOINT="your-endpoint-here"
+API_VERSION="2025-05-01"
+curl -X GET "${PROJECT_ENDPOINT}/assistants?api-version=${API_VERSION}" \
+  -H "Authorization: Bearer $(az account get-access-token --scope https://ai.azure.com/.default --query accessToken -o tsv)" \
+  -H "Content-Type: application/json"
+```
 
-**General Agents (OpenAI-Compatible API):**
-1. **General Assistant** (`asst_general_id`)
-   - Friendly general assistant
-   - Model: gpt-4.1-mini
-   - Access via: `/openai/assistants` with API version `2024-02-15-preview`
+Example agents you might see:
+1. **Your Custom Assistant** (`asst_xxxxx`)
+   - Specialized for your use case
+   - Model: gpt-4.1-mini or other configured model
+   - Custom instructions and tools
 
 ## 🔧 Working Patterns
 
 ### ✅ Correct Patterns
 
-**For your custom agent:**
-- Endpoint: `/api/projects/your-project/assistants`
-- API Version: `2025-05-01`
-- Auth: Bearer token with `https://ai.azure.com/.default`
-
-**For general agents (OpenAI-compatible):**
-- Endpoint: `/openai/assistants`
-- API Version: `2024-02-15-preview`
-- Auth: Bearer token with `https://ai.azure.com/.default`
-- Headers: Include `OpenAI-Beta: assistants=v2`
+**Azure AI Foundry Native API (used by this app):**
+- **Project Endpoint**: `https://your-endpoint.services.ai.azure.com/api/projects/your-project` (full path)
+- **Resource Paths**: Append directly - `/assistants`, `/threads`, `/threads/{id}/messages`
+- **API Version**: `2025-05-01` (or your configured version)
+- **Auth**: Bearer token with `https://ai.azure.com/.default` scope
+- **Headers**: `Content-Type: application/json`, `Authorization: Bearer {token}`
+- **No OpenAI-Beta header needed**
 
 ### ❌ Incorrect Patterns
-- Endpoint: `/api/projects/.../assistants`
-- API Version: `v1` or other versions
-- Auth: API keys or subscription keys
-- Missing OpenAI-Beta header
+- **DON'T** duplicate the project path: `{endpoint}/api/projects/{project}/assistants` ❌
+- **DON'T** use OpenAI-compatible endpoints: `/openai/assistants` ❌  
+- **DON'T** use older API versions unless specifically required
+- **DON'T** use API keys or subscription keys - use Azure CLI credential
 
 ## 💡 Best Practices
 
-1. **Cache access tokens** - They're valid for ~1 hour
-2. **Handle token refresh** - Implement automatic token renewal
-3. **Store thread IDs** - Maintain conversation context per user
-4. **Poll run status** - Don't assume instant completion
-5. **Handle timeouts** - Implement reasonable wait limits
-6. **Error handling** - Graceful fallback for API failures
+1. **Cache access tokens** - They're valid for ~1 hour, refresh before expiration
+2. **Handle token refresh** - The app automatically gets a fresh token for each request
+3. **Store thread IDs** - Maintain conversation context per user session (Flask session-based)
+4. **Poll run status** - Wait for completion before retrieving messages (max 30 seconds)
+5. **Handle timeouts** - Implement reasonable wait limits with user-friendly messages
+6. **Error handling** - Specific error messages for different failure scenarios (401, 404, timeout, connection errors)
+7. **Use full project endpoint** - Set `AZURE_AI_PROJECT_ENDPOINT` with the complete path including `/api/projects/your-project`
 
 ## 📝 Example Flask Integration
 
 See the working `app.py` file in this repository for a complete Flask integration example that demonstrates:
-- Proper authentication flow
+- Class-based Azure AI client with encapsulated logic
+- Proper authentication flow using Azure CLI credentials
 - Thread management per user session
-- Complete conversation workflow
-- Error handling and fallbacks
+- Complete conversation workflow (create thread → add message → run → poll → get response)
+- Comprehensive error handling with specific messages
+- Automatic token refresh
 
 ## 🔗 References
 
-- Azure AI Foundry Documentation
-- OpenAI Assistants API Reference
-- Azure Identity Library Documentation
+- [Azure AI Foundry Documentation](https://learn.microsoft.com/en-us/azure/ai-studio/)
+- [Azure Identity Library Documentation](https://learn.microsoft.com/en-us/python/api/azure-identity/)
+- [Azure AI Agents Documentation](https://learn.microsoft.com/en-us/azure/ai-studio/how-to/develop/agents)
 
 ---
 
-*Last updated: November 17, 2025*
-*Based on testing with Azure AI Foundry OpenAI-compatible APIs*
+*Last updated: November 18, 2025*
+*Based on Azure AI Foundry Native API (API Version: 2025-05-01)*
