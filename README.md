@@ -1,5 +1,19 @@
 # AI Chatbot Integration Guide
 
+## ☁️ Deploying Your Agent in Azure AI Foundry
+
+To use this chatbot, you must deploy an agent (assistant) in Azure AI Foundry:
+
+1. **Create or select an agent in Azure AI Foundry.**
+2. **Add the contents of `agent_instructions.md` to the agent's "System Instructions" field.**
+  - This ensures the agent is grounded and will only use information from user-uploaded product data sheets and documents, as described in `agent_instructions.md`.
+3. **Upload or provide any additional product data sheets or documents you want the agent to use.**
+4. **Configure your environment variables (see below) with the correct agent ID and endpoint.**
+
+> **Important:** The agent will only behave as intended if you copy the full contents of `agent_instructions.md` into the "System Instructions" of your Azure AI Foundry agent. This is required for proper grounding and compliance.
+
+For more details, see the Azure AI Foundry documentation on creating and configuring assistants.
+
 ## 🚀 Quick Setup
 
 ### 1. Prerequisites

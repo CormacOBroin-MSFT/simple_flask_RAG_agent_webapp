@@ -14,10 +14,10 @@ app.secret_key = 'your-secret-key-here'
 
 
 # Azure AI Foundry Configuration - Native API Endpoint (must be set in environment)
-AZURE_AI_ENDPOINT = os.environ['AZURE_AI_ENDPOINT']
-AZURE_AI_PROJECT_NAME = os.environ['AZURE_AI_PROJECT_NAME']
-AZURE_AI_API_VERSION = os.environ['AZURE_AI_API_VERSION']
-AZURE_AI_AGENT_ID = os.environ['AZURE_AI_AGENT_ID']
+AZURE_AI_ENDPOINT = os.environ.get('AZURE_AI_ENDPOINT')
+AZURE_AI_PROJECT_NAME = os.environ.get('AZURE_AI_PROJECT_NAME')
+AZURE_AI_API_VERSION = os.environ.get('AZURE_AI_API_VERSION')
+AZURE_AI_AGENT_ID = os.environ.get('AZURE_AI_AGENT_ID')
 
 # Check if Azure AI is properly configured (all must be set)
 AZURE_AI_CONFIGURED = all([
