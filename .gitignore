@@ -145,6 +145,9 @@ config.env
 *.key
 *.pem
 
+# Customizations
+static/images/logo.png
+
 # Node.js (if any)
 node_modules/
 npm-debug.log*
