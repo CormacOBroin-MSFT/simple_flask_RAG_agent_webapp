@@ -7,45 +7,22 @@ import random
 from flask import Flask, render_template, request, jsonify, session
 import uuid
 from azure.identity import DefaultAzureCredential, AzureCliCredential, ChainedTokenCredential
+from config import Config
 
 # Initialize Flask app at the top so it is available for route decorators
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
-
-
-# Azure AI Foundry Configuration - Native API Endpoint (must be set in environment)
-AZURE_AI_ENDPOINT = os.environ.get('AZURE_AI_PROJECT_ENDPOINT')
-AZURE_AI_PROJECT_NAME = os.environ.get('AZURE_AI_PROJECT_NAME')
-AZURE_AI_API_VERSION = os.environ.get('AZURE_AI_API_VERSION')
-AZURE_AI_AGENT_ID = os.environ.get('AZURE_AI_AGENT_ID')
-
-# Check if Azure AI is properly configured (all must be set)
-AZURE_AI_CONFIGURED = all([
-    AZURE_AI_ENDPOINT,
-    AZURE_AI_PROJECT_NAME,
-    AZURE_AI_API_VERSION,
-    AZURE_AI_AGENT_ID
-])
-
-
-# Application Configuration
-config = {
-    'bot_name': os.environ.get('BOT_NAME', 'AI Assistant'),
-    'greeting_message': os.environ.get('GREETING_MESSAGE', ''),
-    'debug_mode': os.environ.get('FLASK_DEBUG', 'True').lower() == 'true',
-    'port': int(os.environ.get('PORT', 5000)),
-    'use_agent': os.environ.get('USE_AZURE_AGENT', 'true').lower() == 'true'
-}
+app.secret_key = Config.SECRET_KEY
 
 
 class AzureAIClient:
     """Encapsulates Azure AI Foundry client logic and state management"""
 
-    def __init__(self, endpoint, project_name, api_version, agent_id):
-        self.endpoint = endpoint
-        self.project_name = project_name
-        self.api_version = api_version
-        self.agent_id = agent_id
+    def __init__(self, config_class=Config):
+        self.config = config_class
+        self.endpoint = config_class.AZURE_AI_PROJECT_ENDPOINT
+        self.project_name = config_class.AZURE_AI_PROJECT_NAME
+        self.api_version = config_class.AZURE_AI_API_VERSION
+        self.agent_id = config_class.AZURE_AI_AGENT_ID
         self.credential = None
         self.access_token = None
         self.conversation_threads = {}
@@ -101,7 +78,7 @@ class AzureAIClient:
                 return False
 
             # Test if we can list agents using native API
-            agents_url = f"{self.endpoint}/assistants"
+            agents_url = self.config.get_endpoint('assistants')
 
             response = requests.get(
                 agents_url, headers=headers, params=self._get_params())
@@ -153,7 +130,7 @@ class AzureAIClient:
                 return None
 
             # Create new thread using native Azure AI Foundry API
-            threads_url = f"{self.endpoint}/threads"
+            threads_url = self.config.get_endpoint('threads')
 
             response = requests.post(
                 threads_url, headers=headers, params=self._get_params(), json={})
@@ -192,7 +169,7 @@ class AzureAIClient:
             params = self._get_params()
 
             # 1. Add message to thread
-            messages_url = f"{self.endpoint}/threads/{thread_id}/messages"
+            messages_url = self.config.get_endpoint('messages', thread_id=thread_id)
             message_data = {"role": "user", "content": message}
 
             response = requests.post(
@@ -209,7 +186,7 @@ class AzureAIClient:
             print(f"✅ Message created: {message_obj['id']}")
 
             # 2. Create and run
-            runs_url = f"{self.endpoint}/threads/{thread_id}/runs"
+            runs_url = self.config.get_endpoint('runs', thread_id=thread_id)
             run_data = {"assistant_id": self.agent_id}
 
             response = requests.post(
@@ -232,7 +209,7 @@ class AzureAIClient:
                 time.sleep(1)
                 wait_time += 1
 
-                run_status_url = f"{self.endpoint}/threads/{thread_id}/runs/{run_id}"
+                run_status_url = self.config.get_endpoint('run_status', thread_id=thread_id, run_id=run_id)
                 response = requests.get(
                     run_status_url, headers=headers, params=params)
 
@@ -259,7 +236,7 @@ class AzureAIClient:
                 return "Request timed out. The agent is taking longer than expected. Please try again."
 
             # 4. Get messages
-            messages_url = f"{self.endpoint}/threads/{thread_id}/messages"
+            messages_url = self.config.get_endpoint('messages', thread_id=thread_id)
             response = requests.get(
                 messages_url, headers=headers, params=params)
 
@@ -361,19 +338,19 @@ def get_bot_response(user_input):
     session_id = session['session_id']
 
     # Only use Azure AI Foundry Agent
-    if config['use_agent'] and azure_client:
+    if Config.USE_AZURE_AGENT and azure_client:
         azure_response = azure_client.get_response(user_input, session_id)
         if azure_response and not azure_response.startswith("Failed to create") and not azure_response.startswith("Sorry, I encountered"):
             return azure_response
 
     # If not available, return debug info
     debug_info = []
-    if not config['use_agent']:
+    if not Config.USE_AZURE_AGENT:
         debug_info.append(
             "[Debug] Azure AI agent usage is disabled (USE_AZURE_AGENT is false).")
     if not azure_client:
         debug_info.append("[Debug] Azure AI client is not initialized.")
-    if not AZURE_AI_CONFIGURED:
+    if not Config.is_azure_configured():
         debug_info.append(
             "[Debug] Azure AI configuration is incomplete or using placeholder values.")
     debug_info.append(
@@ -385,8 +362,8 @@ def get_bot_response(user_input):
 def index():
     """Serve the main chat interface"""
     return render_template('index.html',
-                           bot_name=config['bot_name'],
-                           greeting=config['greeting_message'])
+                           bot_name=Config.BOT_NAME,
+                           greeting=Config.GREETING_MESSAGE)
 
 
 @app.route('/chat', methods=['POST'])
@@ -420,17 +397,17 @@ def chat():
 def get_config():
     """Get current bot configuration"""
     azure_configured = bool(azure_client and azure_client.credential)
-    agent_configured = bool(AZURE_AI_AGENT_ID and config['use_agent'])
+    agent_configured = bool(Config.AZURE_AI_AGENT_ID and Config.USE_AZURE_AGENT)
 
     return jsonify({
-        'bot_name': config['bot_name'],
-        'greeting_message': config['greeting_message'],
+        'bot_name': Config.BOT_NAME,
+        'greeting_message': Config.GREETING_MESSAGE,
         'azure_ai_foundry_enabled': azure_configured,
-        'endpoint': AZURE_AI_ENDPOINT if azure_configured else None,
-        'project_name': AZURE_AI_PROJECT_NAME if azure_configured else None,
+        'endpoint': Config.AZURE_AI_PROJECT_ENDPOINT if azure_configured else None,
+        'project_name': Config.AZURE_AI_PROJECT_NAME if azure_configured else None,
         'agent_mode': agent_configured,
-        'agent_id': AZURE_AI_AGENT_ID if agent_configured else None,
-        'api_version': AZURE_AI_API_VERSION if azure_configured else None
+        'agent_id': Config.AZURE_AI_AGENT_ID if agent_configured else None,
+        'api_version': Config.AZURE_AI_API_VERSION if azure_configured else None
     })
 
 
@@ -440,45 +417,40 @@ def health():
     status = {
         'status': 'healthy',
         'azure_ai_foundry_configured': azure_client is not None and azure_client.credential is not None,
-        'agent_configured': AZURE_AI_AGENT_ID is not None,
-        'agent_mode': config['use_agent']
+        'agent_configured': Config.AZURE_AI_AGENT_ID is not None,
+        'agent_mode': Config.USE_AZURE_AGENT
     }
     return jsonify(status)
 
 
 if __name__ == '__main__':
-    print(f"🚀 Starting {config['bot_name']} with Azure AI Foundry Native API")
+    print(f"🚀 Starting {Config.BOT_NAME} with Azure AI Foundry Native API")
     print("=" * 60)
 
     # Initialize Azure AI Foundry client
-    print(f"📡 Endpoint: {AZURE_AI_ENDPOINT}")
-    print(f"📁 Project: {AZURE_AI_PROJECT_NAME}")
-    print(f"🤖 Agent: {AZURE_AI_AGENT_ID}")
-    print(f"🔢 API Version: {AZURE_AI_API_VERSION}")
+    print(f"📡 Endpoint: {Config.AZURE_AI_PROJECT_ENDPOINT}")
+    print(f"📁 Project: {Config.AZURE_AI_PROJECT_NAME}")
+    print(f"🤖 Agent: {Config.AZURE_AI_AGENT_ID}")
+    print(f"🔢 API Version: {Config.AZURE_AI_API_VERSION}")
 
     azure_initialized = False
-    if AZURE_AI_CONFIGURED:
-        azure_client = AzureAIClient(
-            endpoint=AZURE_AI_ENDPOINT,
-            project_name=AZURE_AI_PROJECT_NAME,
-            api_version=AZURE_AI_API_VERSION,
-            agent_id=AZURE_AI_AGENT_ID
-        )
+    if Config.is_azure_configured():
+        azure_client = AzureAIClient()
         azure_initialized = azure_client.initialize()
     else:
         print("⚠️  Azure AI Foundry not configured - using placeholder values")
         print("   💡 Set environment variables to enable Azure AI integration")
 
     if azure_initialized:
-        if config['use_agent']:
+        if Config.USE_AZURE_AGENT:
             print(
-                f"✅ Azure AI Foundry native agent ready: {AZURE_AI_AGENT_ID}")
+                f"✅ Azure AI Foundry native agent ready: {Config.AZURE_AI_AGENT_ID}")
         else:
             print(f"⚠️  Azure AI Foundry configured but agent disabled")
     else:
         print(f"❌ Azure AI Foundry initialization failed - using fallback responses")
 
-    print(f"🌐 Starting server on port {config['port']}...")
-    print(f"🔧 Debug mode: {config['debug_mode']}")
+    print(f"🌐 Starting server on port {Config.PORT}...")
+    print(f"🔧 Debug mode: {Config.DEBUG_MODE}")
 
-    app.run(host='0.0.0.0', port=config['port'], debug=config['debug_mode'])
+    app.run(host='0.0.0.0', port=Config.PORT, debug=Config.DEBUG_MODE)

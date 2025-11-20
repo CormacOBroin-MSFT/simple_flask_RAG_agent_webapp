@@ -4,7 +4,7 @@
 
 **This application is NOT production-ready and contains security vulnerabilities:**
 
-- **Hardcoded Flask Secret Key**: The session secret key is hardcoded in `app.py` as `'your-secret-key-here'`, which is insecure. This means:
+- **Hardcoded Flask Secret Key**: The session secret key defaults to `'your-secret-key-here'` in `config.py`, which is insecure. This means:
   - Session data can be easily forged or tampered with
   - All deployments share the same key, compromising security across instances
   - Sessions persist across server restarts, which could be exploited
@@ -12,7 +12,7 @@
 **For production deployment, you MUST:**
 1. Generate a secure random secret key: `python -c "import secrets; print(secrets.token_hex(32))"`
 2. Set it as an environment variable: `export FLASK_SECRET_KEY="your-generated-key"`
-3. Update `app.py` to use: `app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback-dev-key')`
+3. The app will automatically use the environment variable value from `config.py`
 
 **This application is intended for local development and testing purposes only.**
 
@@ -49,25 +49,48 @@ pip install -r requirements.txt
 ```
 
 ### 3. Environment Variables
-Set the following environment variables (in your shell, `.env`, or `.bashrc`):
-- `AZURE_AI_PROJECT_ENDPOINT` - Full project endpoint including path (e.g. `https://your-endpoint.services.ai.azure.com/api/projects/your-project`)
-- `AZURE_AI_PROJECT_NAME` - Your project name (e.g. `your-project`)
-- `AZURE_AI_API_VERSION` - API version to use (e.g. `2025-05-01`)
-- `AZURE_AI_AGENT_ID` - Your assistant ID (e.g. `asst_xxxxx`)
-- `USE_AZURE_AGENT` - Set to `true` to enable agent (default: `true`)
-- `BOT_NAME` - Optional, UI display name (default: `AI Assistant`)
-- `GREETING_MESSAGE` - Optional, UI greeting message
-- `FLASK_SECRET_KEY` - Recommended for session security
 
-Example for bash:
+All application settings are centralized in `config.py` using the `Config` class. This allows for easy customization via environment variables.
+
+#### Required Environment Variables
 ```bash
-export AZURE_AI_PROJECT_ENDPOINT="https://your-endpoint.services.ai.azure.com/api/projects/your-project"
-export AZURE_AI_PROJECT_NAME="your-project"
-export AZURE_AI_API_VERSION="2025-05-01"
-export AZURE_AI_AGENT_ID="asst_your_custom_id"
-export USE_AZURE_AGENT=true
-export FLASK_SECRET_KEY="your-very-secret-key"
+# Azure AI Project Configuration
+export AZURE_AI_PROJECT_ENDPOINT="https://YOUR_RESOURCE.services.ai.azure.com/api/projects/YOUR_PROJECT"
+export AZURE_AI_AGENT_ID="asst_xxxxxxxxxxxxxxxxxxxx"
 ```
+
+#### Optional Environment Variables
+```bash
+# Flask Configuration
+export PORT=5000                      # Default: 5000
+export DEBUG_MODE=True                # Default: True
+export FLASK_SECRET_KEY="your-key"    # Default: 'your-secret-key-here' (⚠️ CHANGE IN PRODUCTION!)
+
+# UI Customization
+export BOT_NAME="AI Assistant"        # Default: "AI Assistant"
+export GREETING_MESSAGE="Hello!"      # Default: "Hello! How can I assist you today?"
+export USE_AZURE_AGENT=true           # Default: true
+
+# API Configuration
+export AZURE_AI_API_VERSION="2025-05-01"      # Default: 2025-05-01
+export AZURE_AI_PROJECT_NAME="your-project"   # Optional, extracted from endpoint if not set
+
+# Custom API Endpoint Patterns (optional - defaults work for standard Azure AI Foundry)
+export ENDPOINT_ASSISTANTS="/assistants"
+export ENDPOINT_THREADS="/threads"
+export ENDPOINT_MESSAGES="/threads/{thread_id}/messages"
+export ENDPOINT_RUNS="/threads/{thread_id}/runs"
+export ENDPOINT_RUN_STATUS="/threads/{thread_id}/runs/{run_id}"
+```
+
+#### Using a .env File
+Copy `.env.example` to `.env` and customize:
+```bash
+cp .env.example .env
+# Edit .env with your values
+```
+The app automatically loads variables from `.env` if present.
+
 
 ### 4. Add Your Logo
 - Place your logo image as `logo.png` in the folder: `static/images/logo.png`
@@ -108,17 +131,49 @@ access_token = token.token
 
 ## 🌐 API Endpoints
 
-This application uses the **Azure AI Foundry Native API** pattern:
+This application uses the **Azure AI Foundry Native API** pattern with configurable endpoint paths.
 
 ### Base Configuration
 ```
 Project Endpoint: https://your-endpoint.services.ai.azure.com/api/projects/your-project
-API Version: 2025-05-01
+API Version: 2025-05-01 (configurable via AZURE_AI_API_VERSION)
 Content-Type: application/json
 Authorization: Bearer <access_token>
 ```
 
 **Important:** The `AZURE_AI_PROJECT_ENDPOINT` already includes the full path `/api/projects/your-project`, so API calls simply append the resource path (e.g., `/assistants`, `/threads`).
+
+### Endpoint Customization
+
+All API endpoint patterns are defined in `config.py` and can be customized via environment variables:
+
+```python
+# Default patterns in config.py
+ENDPOINT_ASSISTANTS = os.getenv("ENDPOINT_ASSISTANTS", "/assistants")
+ENDPOINT_THREADS = os.getenv("ENDPOINT_THREADS", "/threads")
+ENDPOINT_MESSAGES = os.getenv("ENDPOINT_MESSAGES", "/threads/{thread_id}/messages")
+ENDPOINT_RUNS = os.getenv("ENDPOINT_RUNS", "/threads/{thread_id}/runs")
+ENDPOINT_RUN_STATUS = os.getenv("ENDPOINT_RUN_STATUS", "/threads/{thread_id}/runs/{run_id}")
+```
+
+Dynamic URL construction with parameter interpolation:
+```python
+from config import Config
+
+# Simple endpoint
+url = Config.get_endpoint("assistants")  
+# → https://your-endpoint.../api/projects/your-project/assistants
+
+# Parameterized endpoint
+url = Config.get_endpoint("messages", thread_id="thread_abc123")
+# → https://your-endpoint.../api/projects/your-project/threads/thread_abc123/messages
+```
+
+To use custom endpoint patterns, set environment variables:
+```bash
+export ENDPOINT_ASSISTANTS="/custom/assistants"
+export ENDPOINT_MESSAGES="/custom/threads/{thread_id}/msgs"
+```
 
 ### 📋 List All Agents
 
